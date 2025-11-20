@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Image -> 4K Enhancer</title>
+  <style>
+    body{font-family:Inter, Arial, sans-serif;background:#f3f4f6;color:#111;margin:0;padding:24px;}
+    header{max-width:1000px;margin:0 auto 20px}
+    .card{background:#fff;padding:20px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.08);max-width:1000px;margin:0 auto}
+    .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    input[type=file]{display:block}
+    img#preview{max-width:100%;height:auto;border-radius:8px;display:block;margin-top:12px}
+    .row{display:flex;gap:12px;align-items:center}
+    button{background:#0b76ff;color:white;border:none;padding:10px 14px;border-radius:8px;cursor:pointer}
+    button:disabled{opacity:0.5;cursor:not-allowed}
+    .note{font-size:0.9rem;color:#444;margin-top:10px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Image → 4K Enhancer (Client-side)</h1>
+    <p class="note">This page upscales images directly in your browser to 3840×2160 (4K) using high-quality canvas resampling. For AI-powered enhancement, configure a server-side model or API (see notes below).</p>
+  </header>
+
+  <main class="card">
+    <div class="controls">
+      <div>
+        <label><strong>Choose image</strong></label><br>
+        <input id="file" type="file" accept="image/*">
+      </div>
+
+      <div style="min-width:260px;">
+        <label><strong>Or use a file URL</strong></label>
+        <input id="url" type="text" style="width:100%;padding:8px;margin-top:6px;border-radius:6px;border:1px solid #ddd" value="/mnt/data/realistic-scene-generator.zip">
+        <div class="note">(Developer-provided local path auto-filled above as the uploaded file URL.)</div>
+      </div>
+
+      <div class="row">
+        <button id="loadUrl">Load URL</button>
+        <button id="enhance" disabled>Enhance to 4K</button>
+        <button id="download" disabled>Download 4K</button>
+      </div>
+    </div>
+
+    <div id="status">No image loaded.</div>
+    <img id="preview" alt="Preview will appear here" />
+
+    <section style="margin-top:16px">
+      <h3>How it works (client-side upscale)</h3>
+      <ol>
+        <li>The browser reads the image and draws it to a hidden canvas.</li>
+        <li>We create a new canvas sized to 3840×2160 and draw the image with high-quality resampling.</li>
+        <li>You can preview and download the upscaled image as a PNG.</li>
+      </ol>
+      <p class="note"><strong>Important:</strong> Client-side upscaling improves resolution but is not an AI detail-recovery technique. For genuine AI enhancement (noise reduction, face recovery, texture synthesis) you need a server-side model like ESRGAN/Real-ESRGAN, GFPGAN, or commercial APIs.</p>
+
+      <h4>Server/API integration (optional)</h4>
+      <p class="note">If you want server-side AI enhancement, point the <code>fetch()</code> call in the code to an API endpoint that accepts an image and returns an enhanced image. I'll help you set that up if you want.</p>
+    </section>
+  </main>
+
+<script>
+const fileIn = document.getElementById('file');
+const urlIn = document.getElementById('url');
+const loadUrlBtn = document.getElementById('loadUrl');
+const enhanceBtn = document.getElementById('enhance');
+const downloadBtn = document.getElementById('download');
+const preview = document.getElementById('preview');
+const status = document.getElementById('status');
+let currentImageBitmap = null;
+let upscaledBlob = null;
+
+function setStatus(s){ status.textContent = s }
+
+fileIn.addEventListener('change', async (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const url = URL.createObjectURL(f);
+  await loadImageFromURL(url);
+});
+
+loadUrlBtn.addEventListener('click', async ()=>{
+  const url = urlIn.value.trim();
+  if(!url){ setStatus('Enter a valid URL or upload a file.'); return; }
+  try{
+    await loadImageFromURL(url);
+  }catch(err){
+    setStatus('Failed to load image from URL. See console.');
+    console.error(err);
+  }
+});
+
+async function loadImageFromURL(url){
+  setStatus('Loading image...');
+  preview.src = '';
+  currentImageBitmap = null;
+  upscaledBlob = null;
+  downloadBtn.disabled = true;
+  enhanceBtn.disabled = true;
+
+  // Try fetch first (works for http(s) URLs). For local paths, environment must serve the file.
+  try{
+    const resp = await fetch(url);
+    if(!resp.ok) throw new Error('network');
+    const blob = await resp.blob();
+    const imgUrl = URL.createObjectURL(blob);
+    preview.src = imgUrl;
+    await preview.decode();
+    currentImageBitmap = await createImageBitmap(blob);
+    setStatus('Image loaded. Ready to enhance.');
+    enhanceBtn.disabled = false;
+  }catch(err){
+    // Fallback: try to set directly as img src (may work for file:// in some environments)
+    preview.src = url;
+    try{
+      await preview.decode();
+      setStatus('Image loaded from direct URL. Ready to enhance.');
+      enhanceBtn.disabled = false;
+    }catch(e){
+      setStatus('Could not load the image. If you used a local path (like /mnt/data/...), your server must serve that path over HTTP.');
+      console.error(e, err);
+    }
+  }
+}
+
+// Basic high-quality upscale using canvas
+enhanceBtn.addEventListener('click', async ()=>{
+  if(!currentImageBitmap && !preview.src) return setStatus('No image loaded');
+  setStatus('Upscaling to 3840×2160...');
+  enhanceBtn.disabled = true;
+
+  // target 4K
+  const targetW = 3840;
+  const targetH = 2160;
+
+  // create canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // draw image centered and cover
+  const img = currentImageBitmap || await createImageBitmap(await (await fetch(preview.src)).blob());
+  const srcW = img.width;
+  const srcH = img.height;
+  const srcRatio = srcW/srcH;
+  const dstRatio = targetW/targetH;
+  let drawW, drawH;
+  if(srcRatio > dstRatio){ // source wider -> fit height
+    drawH = targetH;
+    drawW = Math.round(drawH * srcRatio);
+  }else{ // source taller -> fit width
+    drawW = targetW;
+    drawH = Math.round(drawW / srcRatio);
+  }
+  const offsetX = Math.round((targetW - drawW)/2);
+  const offsetY = Math.round((targetH - drawH)/2);
+  ctx.clearRect(0,0,targetW,targetH);
+  ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+
+  // convert to blob
+  upscaledBlob = await new Promise(res=>canvas.toBlob(res, 'image/png'));
+  const upUrl = URL.createObjectURL(upscaledBlob);
+  preview.src = upUrl;
+  setStatus('Upscale complete. Preview shown below. Click Download to save the 4K PNG.');
+  downloadBtn.disabled = false;
+});
+
+downloadBtn.addEventListener('click', ()=>{
+  if(!upscaledBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(upscaledBlob);
+  a.download = 'upscaled-4k.png';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+</script>
+</body>
+</html>
