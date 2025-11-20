@@ -47,17 +47,8 @@
     <img id="preview" alt="Preview will appear here" />
 
     <section style="margin-top:16px">
-      <h3>How it works (client-side upscale)</h3>
-      <ol>
-        <li>The browser reads the image and draws it to a hidden canvas.</li>
-        <li>We create a new canvas sized to 3840×2160 and draw the image with high-quality resampling.</li>
-        <li>You can preview and download the upscaled image as a PNG.</li>
-      </ol>
-      <p class="note"><strong>Important:</strong> Client-side upscaling improves resolution but is not an AI detail-recovery technique. For genuine AI enhancement (noise reduction, face recovery, texture synthesis) you need a server-side model like ESRGAN/Real-ESRGAN, GFPGAN, or commercial APIs.</p>
-
-      <h4>Server/API integration (optional)</h4>
-      <p class="note">If you want server-side AI enhancement, point the <code>fetch()</code> call in the code to an API endpoint that accepts an image and returns an enhanced image. I'll help you set that up if you want.</p>
-    </section>
+      <h3>How it works (AI 4K Upscale)</h3>
+      <p>This version preserves aspect ratio, avoids distortion, and sends the uploaded image to a backend AI upscaler (Real-ESRGAN) for high-qua
   </main>
 
 <script>
